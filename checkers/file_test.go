@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	gc "launchpad.net/gocheck"
 
@@ -163,4 +164,110 @@ func (s *FileSuite) TestIsSymlinkWithDir(c *gc.C) {
 	result, message := jc.IsSymlink.Check([]interface{}{c.MkDir()}, nil)
 	c.Assert(result, jc.IsFalse)
 	c.Assert(message, jc.Contains, " is not a symlink")
+}
+
+func (s *FileSuite) TestSamePathWithNumber(c *gc.C) {
+	result, message := jc.SamePath.Check([]interface{}{42, 52}, nil)
+	c.Assert(result, jc.IsFalse)
+	c.Assert(message, gc.Equals, "obtained value is not a string and has no .String(), int:42")
+}
+
+func (s *FileSuite) TestSamePathBasic(c *gc.C) {
+	dir := c.MkDir()
+
+	result, message := jc.SamePath.Check([]interface{}{dir, dir}, nil)
+
+	c.Assert(result, jc.IsTrue)
+	c.Assert(message, gc.Equals, "")
+}
+
+func (s *FileSuite) TestNotSamePathBasic(c *gc.C) {
+	dir := c.MkDir()
+	path1 := filepath.Join(dir, "notTest")
+	path2 := filepath.Join(dir, "test")
+
+	result, message := jc.SamePath.Check([]interface{}{path1, path2}, nil)
+
+	c.Assert(result, jc.IsFalse)
+	c.Assert(message, gc.Equals, "stat "+path1+": no such file or directory")
+}
+
+type SamePathLinuxSuite struct{}
+
+var _ = gc.Suite(&SamePathLinuxSuite{})
+
+func (s *SamePathLinuxSuite) SetUpSuite(c *gc.C) {
+	if runtime.GOOS == "windows" {
+		c.Skip("Skipped Linux-intented SamePath tests on Windows.")
+	}
+}
+
+func (s *SamePathLinuxSuite) TestNotSamePathLinuxBasic(c *gc.C) {
+	dir := c.MkDir()
+	path1 := filepath.Join(dir, "Test")
+	path2 := filepath.Join(dir, "test")
+
+	result, message := jc.SamePath.Check([]interface{}{path1, path2}, nil)
+
+	c.Assert(result, jc.IsFalse)
+	c.Assert(message, gc.Equals, "stat "+path1+": no such file or directory")
+}
+
+func (s *SamePathLinuxSuite) TestSamePathLinuxSymlinks(c *gc.C) {
+	file, err := ioutil.TempFile(c.MkDir(), "")
+	c.Assert(err, gc.IsNil)
+	symlinkPath := filepath.Join(filepath.Dir(file.Name()), "a-symlink")
+	err = os.Symlink(file.Name(), symlinkPath)
+
+	result, message := jc.SamePath.Check([]interface{}{file.Name(), symlinkPath}, nil)
+
+	c.Assert(result, jc.IsTrue)
+	c.Assert(message, gc.Equals, "")
+}
+
+type SamePathWindowsSuite struct{}
+
+var _ = gc.Suite(&SamePathWindowsSuite{})
+
+func (s *SamePathWindowsSuite) SetUpSuite(c *gc.C) {
+	if runtime.GOOS != "windows" {
+		c.Skip("Skipped Windows-intented SamePath tests.")
+	}
+}
+
+func (s *SamePathWindowsSuite) TestSamePathWindowsCaseInsensitive(c *gc.C) {
+	dir := c.MkDir()
+	path1 := filepath.Join(dir, "Test")
+	path2 := filepath.Join(dir, "test")
+
+	result, message := jc.SamePath.Check([]interface{}{path1, path2}, nil)
+
+	c.Assert(result, jc.IsTrue)
+	c.Assert(message, gc.Equals, "")
+}
+
+func (s *SamePathWindowsSuite) TestSamePathWindowsFixSlashes(c *gc.C) {
+	result, message := jc.SamePath.Check([]interface{}{"C:/Users", "C:\\Users"}, nil)
+
+	c.Assert(result, jc.IsTrue)
+	c.Assert(message, gc.Equals, "")
+}
+
+func (s *SamePathWindowsSuite) TestSamePathShortenedPaths(c *gc.C) {
+	result, message := jc.SamePath.Check([]interface{}{"C:/PROGRA~1", "C:/Program Files"}, nil)
+
+	c.Assert(result, jc.IsTrue)
+	c.Assert(message, gc.Equals, "")
+}
+
+func (s *SamePathWindowsSuite) TestSamePathShortenedPathsConsistent(c *gc.C) {
+	result, message := jc.SamePath.Check([]interface{}{"C:/PROGRA~1", "C:/Program Files (x86)"}, nil)
+
+	c.Assert(result, gc.Not(jc.IsTrue))
+	c.Assert(message, gc.Equals, "Not the same file")
+
+	result, message = jc.SamePath.Check([]interface{}{"C:/PROGRA~2", "C:/Program Files (x86)"}, nil)
+
+	c.Assert(result, jc.IsTrue)
+	c.Assert(message, gc.Equals, "")
 }
