@@ -7,8 +7,10 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	jc "github.com/juju/testing/checkers"
+	"github.com/juju/utils/symlink"
 	gc "gopkg.in/check.v1"
 )
 
@@ -109,7 +111,9 @@ func (d Dir) Check(c *gc.C, basePath string) Entry {
 	if !c.Check(err, gc.IsNil, comment) {
 		return d
 	}
+	if runtime.GOOS != "windows" {
 	c.Check(fileInfo.Mode()&os.ModePerm, gc.Equals, d.Perm, comment)
+	}
 	c.Check(fileInfo.Mode()&os.ModeType, gc.Equals, os.ModeDir, comment)
 	return d
 }
@@ -143,8 +147,10 @@ func (f File) Check(c *gc.C, basePath string) Entry {
 		return f
 	}
 	mode := fileInfo.Mode()
+	if runtime.GOOS != "windows" {
 	c.Check(mode&os.ModeType, gc.Equals, os.FileMode(0), comment)
 	c.Check(mode&os.ModePerm, gc.Equals, f.Perm, comment)
+	}
 	data, err := ioutil.ReadFile(path)
 	c.Check(err, gc.IsNil, comment)
 	c.Check(string(data), gc.Equals, f.Data, comment)
@@ -163,7 +169,7 @@ func (s Symlink) GetPath() string {
 }
 
 func (s Symlink) Create(c *gc.C, basePath string) Entry {
-	err := os.Symlink(s.Link, join(basePath, s.Path))
+	err := symlink.New(s.Link, join(basePath, s.Path))
 	c.Assert(err, gc.IsNil)
 	return s
 }
@@ -171,7 +177,7 @@ func (s Symlink) Create(c *gc.C, basePath string) Entry {
 func (s Symlink) Check(c *gc.C, basePath string) Entry {
 	path := join(basePath, s.Path)
 	comment := gc.Commentf("symlink %q", path)
-	link, err := os.Readlink(path)
+	link, err := symlink.Read(path)
 	c.Check(err, gc.IsNil, comment)
 	c.Check(link, gc.Equals, s.Link, comment)
 	return s
